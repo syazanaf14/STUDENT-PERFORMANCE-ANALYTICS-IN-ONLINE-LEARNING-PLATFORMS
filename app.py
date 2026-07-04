@@ -127,15 +127,22 @@ div[data-testid="stForm"] {
     padding: 16px;
     font-size: 14px;
     color: #e8e8e8;
+    margin-top: 10px;
 }
 .insight-card strong {
     color: #1D9E75;
 }
+.insight-card.critical strong {
+    color: #dc3545;
+}
 </style>
 """, unsafe_allow_html=True)
 
-# Helper to sync Plotly styling with the premium dark theme
-def apply_executive_theme(fig, height=350):
+# =====================================================
+# HELPER FUNCTIONS
+# =====================================================
+def apply_executive_theme(fig, height=380):
+    """Applies the enterprise dark theme to Plotly figures."""
     fig.update_layout(
         paper_bgcolor='rgba(0,0,0,0)',
         plot_bgcolor='rgba(0,0,0,0)',
@@ -159,7 +166,8 @@ try:
     with open("student_dropout_model.pkl", "rb") as f:
         model = pickle.load(f)
 except Exception as e:
-    st.error("System Configuration Error: Please ensure the dataset '.csv' and model file '.pkl' are uploaded into the GitHub repository.")
+    st.error(f"System Configuration Error: Unable to load dependencies. Ensure 'online_learning_engagement_cleaned.csv' and 'student_dropout_model.pkl' are present in the directory. Details: {e}")
+    st.stop()
 
 # =====================================================
 # ENTERPRISE NAVIGATION HEADER
@@ -216,31 +224,41 @@ if page == "📈 Platform Overview":
 # =====================================================
 # MODULE 2: BEHAVIORAL ANALYTICS
 # =====================================================
-elif page == "📊 Behavioral Analysis":
+elif page == "📊 Behavioral Analytics":
     st.markdown("<div class='section-label'>Operational Drilldown Filter</div>", unsafe_allow_html=True)
     
-    # Clean Dropdown Container
     st.markdown("<div class='content-box'>", unsafe_allow_html=True)
-    device_list = ['All Hardware Classes'] + list(df['device_type'].unique())
-    selected_device = st.selectbox("Segment Data by Student Hardware Class:", device_list)
+    if 'device_type' in df.columns:
+        device_list = ['All Hardware Classes'] + list(df['device_type'].unique())
+        selected_device = st.selectbox("Segment Data by Student Hardware Class:", device_list)
+        filtered_df = df if selected_device == 'All Hardware Classes' else df[df['device_type'] == selected_device]
+    else:
+        st.info("Device type segmentation is not available in the current dataset.")
+        filtered_df = df
     st.markdown("</div>", unsafe_allow_html=True)
-    
-    filtered_df = df if selected_device == 'All Hardware Classes' else df[df['device_type'] == selected_device]
     
     col_g1, col_g2 = st.columns(2)
     
     with col_g1:
         st.markdown("<div class='content-box'>", unsafe_allow_html=True)
         st.write("**Correlation: Class Attendance vs Final Academic Grade**")
+        
+        # Determine if 'final_grade' exists, otherwise fall back to 'avg_quiz_score'
+        y_axis_val = "final_grade" if "final_grade" in filtered_df.columns else "avg_quiz_score"
+        
         fig_scatter = px.scatter(
-            filtered_df, x="attendance_rate", y="final_grade", color="dropout",
+            filtered_df, x="attendance_rate", y=y_axis_val, color="dropout",
             color_discrete_map={0: "#1D9E75", 1: "#dc3545"},
-            labels={"attendance_rate": "Attendance Consistency (0.0 - 1.0)", "final_grade": "Final Attained Score", "dropout": "Status"},
-            opacity=0.5
+            labels={
+                "attendance_rate": "Attendance Consistency (0.0 - 1.0)", 
+                y_axis_val: "Final Attained Score", 
+                "dropout": "Lifecycle Status"
+            },
+            opacity=0.6
         )
         st.plotly_chart(apply_executive_theme(fig_scatter), use_container_width=True)
         st.markdown("""
-        <div class="insight-card">
+        <div class="insight-card critical">
             💡 <strong>Business Insight:</strong> Critical dropout clustering (red data points) is heavily dense below the <strong>70% attendance threshold</strong>. Attendance serves as our primary early-warning vector.
         </div>""", unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
@@ -292,13 +310,14 @@ elif page == "🔮 Machine Learning Predictor":
         submit_btn = st.form_submit_button("Execute Predictive Diagnostics", type="primary")
 
     if submit_btn:
-        # Array alignments mapping to the 10 features from your trained Random Forest model
+        # Align features precisely as requested
         features_input = np.array([[
             study_hours_weekly, login_frequency_weekly, avg_session_duration_min,
             video_watch_time_min, assignments_submitted, forum_posts,
             quiz_attempts, avg_quiz_score, attendance_rate, engagement_score
         ]])
         
+        # Process Prediction
         prediction = model.predict(features_input)
         prediction_proba = model.predict_proba(features_input)[0][1] * 100
         
@@ -308,12 +327,12 @@ elif page == "🔮 Machine Learning Predictor":
         
         with res_col1:
             st.markdown("<div class='content-box'>", unsafe_allow_html=True)
-            # High business view responsive Gauge chart
+            # Responsive Gauge chart
             fig_gauge = go.Figure(go.Indicator(
                 mode = "gauge+number",
                 value = prediction_proba,
                 domain = {'x': [0, 1], 'y': [0, 1]},
-                title = {'text': "Attrition Risk Probability (%)", 'font': {'size': 13, 'color': '#9ca3af'}},
+                title = {'text': "Attrition Risk Probability (%)", 'font': {'size': 14, 'color': '#9ca3af'}},
                 gauge = {
                     'axis': {'range': [None, 100], 'tickwidth': 1, 'tickcolor': '#e8e8e8'},
                     'bar': {'color': "#dc3545" if prediction[0] == 1 else "#1D9E75"},
@@ -327,13 +346,13 @@ elif page == "🔮 Machine Learning Predictor":
             fig_gauge.update_layout(
                 paper_bgcolor='rgba(0,0,0,0)',
                 font=dict(color='#e8e8e8', family='Inter'),
-                height=220, margin=dict(l=20, r=20, t=30, b=20)
+                height=250, margin=dict(l=20, r=20, t=30, b=20)
             )
             st.plotly_chart(fig_gauge, use_container_width=True)
             st.markdown("</div>", unsafe_allow_html=True)
 
         with res_col2:
-            st.markdown("<div class='content-box'>", unsafe_allow_html=True)
+            st.markdown("<div class='content-box' style='height: 100%;'>", unsafe_allow_html=True)
             st.write("### Operational Diagnosis Summary:")
             if prediction[0] == 1:
                 st.markdown(f"<h3 style='color:#dc3545; margin-top:0;'>⚠️ CRITICAL STATUS: HIGH ATTRITION RISK</h3>", unsafe_allow_html=True)
